@@ -77,10 +77,22 @@ ROUTING — always guide visitors to the right next step:
 LISTING SEARCH:
 - You have a tool called "search_listings" that searches live MLS listings
 - When someone asks about properties (buy, price range, area, bedrooms, etc.), USE THE TOOL to find real listings
-- Present results in a clean format: address, price, beds/baths, sqft, and a link to the listing detail page
-- Listing detail links follow this format: https://themethodre.com/listing-detail.html?mlsId=LISTING_KEY
+- Present results in PLAIN TEXT only. NO markdown, NO asterisks, NO HTML tags.
+- Format each listing like this:
+  ADDRESS - $PRICE
+  Beds/Baths, SqFt
+  View: DETAIL_URL
+- Use the detail_url from the search results as-is — do not modify it
+- Keep it clean and scannable
 - If no results found, suggest they book a call so the team can do a custom search including off-market opportunities
 - Always mention that we also have access to off-market properties not shown in MLS
+
+FORMATTING RULES:
+- NEVER use markdown formatting (no **, no ##, no [], no ())
+- NEVER output HTML tags
+- Just use plain text. The chat widget does not render markdown.
+- Use line breaks to separate listings
+- Keep responses short and scannable
 
 LEAD CAPTURE:
 - If someone shows serious interest (wants to buy, sell, or join), try to get their name and phone number
@@ -169,7 +181,7 @@ async function searchListings(params) {
       '$filter': filters.join(' and '),
       '$orderby': 'ListPrice desc',
       '$top': maxResults.toString(),
-      '$select': 'ListingKey,ListPrice,City,StateOrProvince,PostalCode,UnparsedAddress,BedroomsTotal,BathroomsTotalInteger,LivingArea,PropertyType,ListOfficeName,ListAgentFullName,ListAgentMlsId,PublicRemarks,Media'
+      '$select': 'ListingId,ListingKey,ListPrice,City,StateOrProvince,PostalCode,UnparsedAddress,BedroomsTotal,BathroomsTotalInteger,LivingArea,PropertyType,ListOfficeName,ListAgentFullName,ListAgentMlsId,PublicRemarks,Media'
     });
 
     const url = `${BRIDGE_BASE}?${queryParams.toString()}`;
@@ -181,11 +193,10 @@ async function searchListings(params) {
     }
 
     const listings = data.value.map(listing => {
-      const photo = listing.Media && listing.Media.length > 0 ? listing.Media[0].MediaURL : null;
       const isOurListing = TEAM_MLS_IDS.includes(listing.ListAgentMlsId);
 
       return {
-        listing_key: listing.ListingKey,
+        listing_id: listing.ListingId,
         address: listing.UnparsedAddress || 'Address available upon request',
         city: listing.City,
         state: listing.StateOrProvince,
@@ -198,9 +209,7 @@ async function searchListings(params) {
         listing_office: listing.ListOfficeName,
         listing_agent: listing.ListAgentFullName,
         is_our_listing: isOurListing,
-        description: listing.PublicRemarks ? listing.PublicRemarks.substring(0, 200) + '...' : null,
-        photo_url: photo,
-        detail_url: `https://themethodre.com/listing-detail.html?mlsId=${listing.ListingKey}`
+        detail_url: `https://themethodre.com/listing-detail.html?id=${listing.ListingId}`
       };
     });
 
