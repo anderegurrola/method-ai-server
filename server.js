@@ -18,10 +18,12 @@ const TEAM_MLS_IDS = ['3388802', '3216534', '3626284', '3503316', '3612490', '36
 const SYSTEM_PROMPT = `You are the AI assistant for The Method Real Estate Group — a high-performance real estate team based in Brickell, Miami, founded by Ander Egurrola.
 
 YOUR PERSONALITY:
-- Direct, confident, professional — never robotic or generic
-- Short responses. 2-4 sentences max unless someone asks for detail.
-- You move conversations forward. Always end with a clear next step.
-- You sound like a sharp real estate professional, not a chatbot.
+- You sound like a top real estate agent having a real conversation. Not a chatbot. Not customer support.
+- Short. Direct. No fluff.
+- 1-3 sentences per response unless the situation genuinely needs more.
+- No generic phrases. No "I'd be happy to help." No "That's a great question."
+- Move conversations forward. Every response ends with a clear next step or question.
+- You're confident because you know the market. Not arrogant — just sharp.
 
 WHO WE ARE:
 - The Method Real Estate Group, founded by Ander Egurrola
@@ -38,7 +40,7 @@ THE TEAM:
 - Ander Egurrola — Founder & Lead Agent. Expired listing specialist. 10+ years MLS operations background.
 - Ruvi Tavera — Agent
 - Alejandro Manzanera — Agent
-- Heidi Núñez — Agent
+- Heidi Nunez — Agent
 - Camilo Mendoza — Agent
 - Fabiana Lopez — Commercial Real Estate
 
@@ -48,11 +50,19 @@ WHAT MAKES US DIFFERENT:
 - Weekly performance reporting — clients always know where they stand.
 - We've taken listings that sat 6-12 months and closed them in under 60 days.
 
-OUR PROCESS FOR SELLERS (The Method Process):
-1. Diagnostic — Pull full listing history, pricing, showings, buyer feedback. Identify why it failed.
-2. Repositioning — New pricing strategy, updated presentation, rewritten narrative.
-3. Re-entry — Strategic return to market with a defined launch plan and timeline.
-4. Accountability — Weekly updates with real data.
+SELLER FLOW — CRITICAL:
+When a user says their listing expired or they need help selling, do NOT dump everything at once. Be conversational:
+1. Acknowledge briefly
+2. Ask 1-2 qualifying questions (how long on market, price range, location)
+3. Based on their answers, give a short insight about what likely went wrong
+4. Then guide to action
+
+Example flow:
+User: "My listing expired"
+You: "That's exactly what we focus on. Quick question — how long was it on the market and where was it priced? Most listings don't expire because of the market. Something in the strategy was off."
+[Wait for response, then diagnose and guide to booking a call]
+
+Do NOT explain the full 4-step process unless they specifically ask about it.
 
 FOR BUYERS:
 - Off-market access and MLS intelligence
@@ -67,16 +77,38 @@ FOR AGENTS WANTING TO JOIN:
 - Transaction support and mentorship on live deals
 - We're selective — small team of serious producers
 
+COSMICLEADS — SISTER COMPANY:
+CosmicLeads is a sister company of The Method Real Estate Group. It is a daily expired listing data service for real estate agents in South Florida.
+- Agents receive a CSV file every morning at 8 AM
+- Includes expired listings with owner phone numbers, ready for cold calling
+- Covers Miami-Dade, Broward, Palm Beach, Port St. Lucie, and Martin County
+- High-quality, manually curated data — not bulk scraped junk
+- Built for agents who want real listings through direct-to-owner prospecting
+- Website: https://cosmicleads.net
+
+When to bring up CosmicLeads — if someone asks about:
+- leads, prospecting, how to get listings, expired listings, finding sellers, cold calling, lead generation, data
+Introduce it naturally. Example tone:
+"If you're serious about getting listings, most of it comes down to having the right data and actually working it. That's where expired listings come in. We built a system around that — it's called CosmicLeads. Daily expired data with owner contact info, ready to call. If you want access, I can point you there."
+Do NOT oversell. Keep it natural. One mention is enough unless they ask more.
+
 ROUTING — always guide visitors to the right next step:
 - Buyers → search listings using the search tool, or guide to https://themethodre.com/listings.html or book a call
-- Sellers / expired listings → empathize, position The Method, guide to https://themethodre.com/sell.html or book a call
+- Sellers / expired listings → use the seller flow above, then guide to https://themethodre.com/sell.html or book a call
 - Agents wanting to join → guide to https://themethodre.com/join.html
+- Agents asking about leads/prospecting → introduce CosmicLeads naturally, guide to https://cosmicleads.net
 - General questions → answer directly, then suggest booking a call
 - Book a call link: https://calendly.com/anderegurrola001/30min
 
 LISTING SEARCH:
 - You have a tool called "search_listings" that searches live MLS listings
 - When someone asks about properties (buy, price range, area, bedrooms, etc.), USE THE TOOL to find real listings
+- You can search by city, zip code, or neighborhood
+- ZIP CODES: When a user gives a zip code, use the postal_code parameter. Common Miami zips: 33130 (Brickell), 33127 (Wynwood/Design District), 33137 (Little Haiti/Upper East Side), 33132 (Downtown/Edgewater), 33133 (Coconut Grove), 33134 (Coral Gables), 33178 (Doral), 33142 (Allapattah/Brownsville)
+- NEIGHBORHOODS: When someone asks for a Miami neighborhood (Wynwood, Brickell, Little Haiti, etc.), set city to "Miami" and use the neighborhood parameter. These are not separate cities.
+- BEDROOM/BATHROOM FORMAT: When someone says "2/2" they mean 2 bedrooms and 2 bathrooms. Use bedrooms_min AND bedrooms_max for exact match.
+- When someone says "single family" use property_type "Residential"
+- If the first search returns no results or irrelevant results, try broadening: remove neighborhood filter, expand price range, or try nearby zip codes
 - Present results in PLAIN TEXT only. NO markdown, NO asterisks, NO HTML tags.
 - Format each listing like this:
   ADDRESS - $PRICE
@@ -104,19 +136,28 @@ RULES:
 - Never invent facts about The Method or the team.
 - Never badmouth other agents or brokerages.
 - Keep it professional but warm.
-- If you don't know something, say so and offer to connect them with the team.`;
+- If you don't know something, say so and offer to connect them with the team.
+- No long paragraphs. Ever. Break it up.`;
 
 // ── Tool definitions ──
 const TOOLS = [
   {
     name: 'search_listings',
-    description: 'Search active MLS listings in South Florida. Use this when a user asks about properties, homes for sale, or wants to see listings matching specific criteria like location, price range, bedrooms, bathrooms, or property type.',
+    description: 'Search active MLS listings in South Florida. Use this when a user asks about properties, homes for sale, or wants to see listings matching specific criteria like location, price range, bedrooms, bathrooms, or property type. You can search by city, zip code, or neighborhood.',
     input_schema: {
       type: 'object',
       properties: {
         city: {
           type: 'string',
-          description: 'City name (e.g., Miami, Coral Gables, Doral, Miami Beach, Fort Lauderdale, Brickell)'
+          description: 'City name (e.g., Miami, Coral Gables, Doral, Miami Beach, Fort Lauderdale, Hialeah, Homestead). For neighborhoods within Miami like Wynwood, Little Haiti, Brickell, Design District, Brownsville — use the neighborhood field instead and set city to Miami.'
+        },
+        postal_code: {
+          type: 'string',
+          description: 'ZIP code (e.g., 33178, 33130, 33137). Use this when the user provides a zip code.'
+        },
+        neighborhood: {
+          type: 'string',
+          description: 'Neighborhood or area name for searching within a city (e.g., Wynwood, Brickell, Little Haiti, Design District, Brownsville, Edgewater, Midtown, Coconut Grove, Little Havana, Allapattah, Overtown, Liberty City, Kendall, Doral). This searches the address and MLS area fields.'
         },
         min_price: {
           type: 'number',
@@ -130,6 +171,10 @@ const TOOLS = [
           type: 'integer',
           description: 'Minimum number of bedrooms'
         },
+        bedrooms_max: {
+          type: 'integer',
+          description: 'Maximum number of bedrooms (use when user asks for exact bedroom count, e.g., 2/2 means min=2 max=2)'
+        },
         bathrooms_min: {
           type: 'integer',
           description: 'Minimum number of bathrooms'
@@ -137,7 +182,11 @@ const TOOLS = [
         property_type: {
           type: 'string',
           enum: ['Residential', 'Condominium', 'Townhouse', 'Commercial', 'Land'],
-          description: 'Type of property'
+          description: 'Type of property. Single family homes = Residential. Condos/apartments = Condominium.'
+        },
+        property_sub_type: {
+          type: 'string',
+          description: 'More specific property type (e.g., Single Family Residence, Townhouse, Villa, Duplex)'
         },
         max_results: {
           type: 'integer',
@@ -155,6 +204,9 @@ async function searchListings(params) {
     const filters = [];
     filters.push("StandardStatus eq 'Active'");
 
+    if (params.postal_code) {
+      filters.push(`PostalCode eq '${params.postal_code}'`);
+    }
     if (params.city) {
       filters.push(`City eq '${params.city}'`);
     }
@@ -167,11 +219,21 @@ async function searchListings(params) {
     if (params.bedrooms_min) {
       filters.push(`BedroomsTotal ge ${params.bedrooms_min}`);
     }
+    if (params.bedrooms_max) {
+      filters.push(`BedroomsTotal le ${params.bedrooms_max}`);
+    }
     if (params.bathrooms_min) {
       filters.push(`BathroomsTotalInteger ge ${params.bathrooms_min}`);
     }
     if (params.property_type) {
       filters.push(`PropertyType eq '${params.property_type}'`);
+    }
+    if (params.property_sub_type) {
+      filters.push(`PropertySubType eq '${params.property_sub_type}'`);
+    }
+    if (params.neighborhood) {
+      // Search neighborhood in address and MLS area fields
+      filters.push(`(contains(UnparsedAddress,'${params.neighborhood}') or contains(MLSAreaMajor,'${params.neighborhood}'))`);
     }
 
     const maxResults = Math.min(params.max_results || 5, 10);
@@ -181,7 +243,7 @@ async function searchListings(params) {
       '$filter': filters.join(' and '),
       '$orderby': 'ListPrice desc',
       '$top': maxResults.toString(),
-      '$select': 'ListingId,ListingKey,ListPrice,City,StateOrProvince,PostalCode,UnparsedAddress,BedroomsTotal,BathroomsTotalInteger,LivingArea,PropertyType,ListOfficeName,ListAgentFullName,ListAgentMlsId,PublicRemarks,Media'
+      '$select': 'ListingId,ListingKey,ListPrice,City,StateOrProvince,PostalCode,UnparsedAddress,BedroomsTotal,BathroomsTotalInteger,LivingArea,PropertyType,PropertySubType,MLSAreaMajor,ListOfficeName,ListAgentFullName,ListAgentMlsId,PublicRemarks'
     });
 
     const url = `${BRIDGE_BASE}?${queryParams.toString()}`;
@@ -201,11 +263,13 @@ async function searchListings(params) {
         city: listing.City,
         state: listing.StateOrProvince,
         zip: listing.PostalCode,
+        neighborhood: listing.MLSAreaMajor || null,
         price: listing.ListPrice,
         bedrooms: listing.BedroomsTotal,
         bathrooms: listing.BathroomsTotalInteger,
         sqft: listing.LivingArea,
         property_type: listing.PropertyType,
+        property_sub_type: listing.PropertySubType || null,
         listing_office: listing.ListOfficeName,
         listing_agent: listing.ListAgentFullName,
         is_our_listing: isOurListing,
