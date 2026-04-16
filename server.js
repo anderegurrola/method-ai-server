@@ -1,389 +1,178 @@
-const express = require('express');
-const Anthropic = require('@anthropic-ai/sdk');
-const cors = require('cors');
+// server.js
+// The Method Real Estate Group — AI backend + CosmicLeads Stripe Checkout
+// Deployed on Railway
+
 require('dotenv').config();
+const express   = require('express');
+const cors      = require('cors');
+const Anthropic = require('@anthropic-ai/sdk');
+const Stripe    = require('stripe');
 
-const app = express();
-const client = new Anthropic();
+const app    = express();
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-app.use(cors());
+// ─── CORS ────────────────────────────────────────────────────────────────────
+// Allow both sites to call this server
+app.use(cors({
+  origin: [
+    'https://themethodre.com',
+    'https://cosmicleads.net',
+    'https://classy-pika-76ed15.netlify.app',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:5500'
+  ]
+}));
 app.use(express.json());
 
-// ── Bridge API config ──
-const BRIDGE_TOKEN = '7295d777246519c6cb64ad7ce70d90bc';
-const BRIDGE_BASE = 'https://api.bridgedataoutput.com/api/v2/OData/miamire/Property';
-const TEAM_MLS_IDS = ['3388802', '3216534', '3626284', '3503316', '3612490', '3645231'];
+// ─── PRICE ID MAP ─────────────────────────────────────────────────────────────
+// Edit here if prices change in Stripe
+const PRICE_IDS = {
+  res:      { m: 'price_1TKmecAqwGTR1f7OFdCNKE0D', a: 'price_1TKmlAAqwGTR1f708X8Xwva4' },
+  com:      { m: 'price_1TKmmYAqwGTR1f7OtFGsai1C', a: 'price_1TKmn3AqwGTR1f70HhWsL8QL' },
+  rent:     { m: 'price_1TKmo4AqwGTR1f700wY6dXFz', a: 'price_1TKmofAqwGTR1f70giCtOnhI' },
+  bundle:   { m: 'price_1TKmqEAqwGTR1f70TkCEBsOm', a: 'price_1TKmqfAqwGTR1f70krzY0Eeo' },
+  sat:      { m: 'price_1TKmrSAqwGTR1f70hnYJgM7j', a: 'price_1TKmsAAqwGTR1f70IPS3JnW4' },
+  guide:    { m: 'price_1TKmvDAqwGTR1f70QhgwEzoF', a: 'price_1TKmvDAqwGTR1f70QhgwEzoF' },
+  coaching: { m: 'price_1TKmxgAqwGTR1f705i16Tqyd', a: 'price_1TKmxgAqwGTR1f705i16Tqyd' }
+};
 
-// ── System prompt ──
-const SYSTEM_PROMPT = `You are the AI assistant for The Method Real Estate Group — a high-performance real estate team based in Brickell, Miami, founded by Ander Egurrola.
+// One-time products (not subscriptions)
+const ONE_TIME = new Set(['guide', 'coaching']);
 
-YOUR PERSONALITY:
-- You sound like a top real estate agent having a real conversation. Not a chatbot. Not customer support.
-- Short. Direct. No fluff.
-- 1-3 sentences per response unless the situation genuinely needs more.
-- No generic phrases. No "I'd be happy to help." No "That's a great question."
-- Move conversations forward. Every response ends with a clear next step or question.
-- You're confident because you know the market. Not arrogant — just sharp.
-
-WHO WE ARE:
-- The Method Real Estate Group, founded by Ander Egurrola
-- Ander spent over a decade inside MLS operations — running the infrastructure agents depend on — before entering production
-- In under 2 years of production: $15M+ closed, mostly on expired and cancelled listings other agents failed with
-- We specialize in expired listings, strategic repositioning, and off-market sourcing
-- Based in Brickell, Miami — serving Miami-Dade, Broward, and Palm Beach counties
-- Brokered by Avenew Realty
-- Phone: (305) 916-1194
-- Email: Ander@themethodre.com
-- Address: 702 SW 1st St, Brickell, Miami FL 33130
-
-THE TEAM:
-- Ander Egurrola — Founder & Lead Agent. Expired listing specialist. 10+ years MLS operations background.
-- Ruvi Tavera — Agent
-- Alejandro Manzanera — Agent
-- Heidi Nunez — Agent
-- Camilo Mendoza — Agent
-- Fabiana Lopez — Commercial Real Estate
-
-WHAT MAKES US DIFFERENT:
-- We don't just relist properties. We diagnose why they failed and rebuild the strategy before going back to market.
-- No ad spend. Our lead generation runs on MLS mastery, direct outreach, and market positioning.
-- Weekly performance reporting — clients always know where they stand.
-- We've taken listings that sat 6-12 months and closed them in under 60 days.
-
-SELLER FLOW — CRITICAL:
-When a user says their listing expired or they need help selling, do NOT dump everything at once. Be conversational:
-1. Acknowledge briefly
-2. Ask 1-2 qualifying questions (how long on market, price range, location)
-3. Based on their answers, give a short insight about what likely went wrong
-4. Then guide to action
-
-Example flow:
-User: "My listing expired"
-You: "That's exactly what we focus on. Quick question — how long was it on the market and where was it priced? Most listings don't expire because of the market. Something in the strategy was off."
-[Wait for response, then diagnose and guide to booking a call]
-
-Do NOT explain the full 4-step process unless they specifically ask about it.
-
-FOR BUYERS — INTERACTIVE FLOW:
-When someone wants to buy, do NOT just list features. Be conversational:
-1. Acknowledge quickly
-2. Ask a qualifying question (price range, area, property type)
-3. Search listings if they give criteria
-4. Guide to ONE clear next step
-
-Example:
-User: "I want to buy"
-You: "Got it — what price range are you looking in? I can pull up what's available right now. It'll move faster if we narrow it down together."
-[Wait for response, then search and show results]
-
-FOR AGENTS — JOIN FLOW:
-When an agent asks about joining, qualify lightly then position The Method:
-1. Ask what they're focused on (listings, buyers, or both)
-2. Position what makes The Method different
-3. Guide to ONE action
-
-Example:
-User: "I'm looking for a team"
-You: "What are you focusing on right now — listings, buyers, or both? The way we operate is different from most teams. If it makes sense, you can apply here: https://themethodre.com/join.html"
-
-COSMICLEADS — FACTS:
-- Sister company of The Method Real Estate Group
-- Daily expired listing data service for real estate agents in South Florida
-- CSV file delivered every morning at 8 AM
-- Includes expired listings with owner phone numbers, ready for cold calling
-- Covers Miami-Dade, Broward, Palm Beach, Port St. Lucie, and Martin County
-- High-quality, manually curated data — not bulk scraped junk
-- Website: https://cosmicleads.net
-ONLY bring up CosmicLeads when relevant. Do NOT oversell. One mention is enough.
-
-LEAD GENERATION FLOW — when someone asks about leads, prospecting, or how to get listings:
-1. Briefly explain the expired listing strategy
-2. Introduce CosmicLeads naturally
-3. Guide toward it with ONE action
-
-Example:
-"If you're serious about getting listings, most of it comes down to having the right data and actually working it. That's where expired listings come in.
-We built a system around that — it's called CosmicLeads. Daily expired data with owner contact info, ready to call.
-If you want access: https://cosmicleads.net"
-
-LEAD CAPTURE — IMPORTANT:
-When you detect strong intent (seller with a real property, buyer ready to move, agent ready to apply):
-- Ask for their name and phone number NATURALLY
-- Frame it as helping them faster
-- Example: "Before I point you in the right direction, what's the best number to reach you at? I can have Ander take a look at your situation directly."
-- Do NOT be pushy. One ask is enough. If they don't give it, move on.
-
-STRONGER CLOSING — ONE CLEAR NEXT STEP:
-Do NOT give multiple options at the end. Pick the ONE best action and guide there.
-- Seller → "The best next step is a quick call to look at your property together. Book a time here: https://calendly.com/anderegurrola001/30min"
-- Buyer → "I'll pull up what's available. What area and price range are you looking in?"
-- Agent → "If you're serious, apply here and we'll set up a call: https://themethodre.com/join.html"
-- Leads → "Check out CosmicLeads: https://cosmicleads.net"
-One link. One action. No menu of choices.
-
-ROUTING — always guide visitors to the right next step:
-- Buyers → search listings using the search tool, or guide to https://themethodre.com/listings.html or book a call
-- Sellers / expired listings → use the seller flow above, then guide to https://themethodre.com/sell.html or book a call
-- Agents wanting to join → guide to https://themethodre.com/join.html
-- Agents asking about leads/prospecting → introduce CosmicLeads naturally, guide to https://cosmicleads.net
-- General questions → answer directly, then suggest booking a call
-- Book a call link: https://calendly.com/anderegurrola001/30min
-
-LISTING SEARCH:
-- You have a tool called "search_listings" that searches live MLS listings
-- When someone asks about properties (buy, price range, area, bedrooms, etc.), USE THE TOOL to find real listings
-- You can search by city, zip code, or neighborhood
-- ZIP CODES: When a user gives a zip code, use the postal_code parameter. Common Miami zips: 33130 (Brickell), 33127 (Wynwood/Design District), 33137 (Little Haiti/Upper East Side), 33132 (Downtown/Edgewater), 33133 (Coconut Grove), 33134 (Coral Gables), 33178 (Doral), 33142 (Allapattah/Brownsville)
-- NEIGHBORHOODS: When someone asks for a Miami neighborhood (Wynwood, Brickell, Little Haiti, etc.), set city to "Miami" and use the neighborhood parameter. These are not separate cities.
-- BEDROOM/BATHROOM FORMAT: When someone says "2/2" they mean 2 bedrooms and 2 bathrooms. Use bedrooms_min AND bedrooms_max for exact match.
-- When someone says "single family" use property_type "Residential"
-- If the first search returns no results or irrelevant results, try broadening: remove neighborhood filter, expand price range, or try nearby zip codes
-- Present results in PLAIN TEXT only. NO markdown, NO asterisks, NO HTML tags.
-- Format each listing like this:
-  ADDRESS - $PRICE
-  Beds/Baths, SqFt
-  View: DETAIL_URL
-- Use the detail_url from the search results as-is — do not modify it
-- Keep it clean and scannable
-- If no results found, suggest they book a call so the team can do a custom search including off-market opportunities
-- Always mention that we also have access to off-market properties not shown in MLS
-
-FORMATTING RULES:
-- NEVER use markdown formatting (no **, no ##, no [], no ())
-- NEVER output HTML tags
-- Just use plain text. The chat widget does not render markdown.
-- Use line breaks to separate listings
-- Keep responses short and scannable
-
-LEAD CAPTURE:
-- If someone shows serious interest (wants to buy, sell, or join), try to get their name and phone number
-- Suggest booking a strategy call: https://calendly.com/anderegurrola001/30min
-- If they prefer, they can call directly: (305) 916-1194
-
-RULES:
-- Never invent listings or property data. Only share what comes from the search tool.
-- Never invent facts about The Method or the team.
-- Never badmouth other agents or brokerages.
-- Keep it professional but warm.
-- If you don't know something, say so and offer to connect them with the team.
-- No long paragraphs. Ever. Break it up.
-- Ask follow-up questions. Keep the conversation going.
-- Sound like you're texting, not writing an email.
-- One clear next step per response — not a menu of options.
-- When someone gives you property details, respond with a specific insight — not a generic acknowledgment.`;
-
-// ── Tool definitions ──
-const TOOLS = [
-  {
-    name: 'search_listings',
-    description: 'Search active MLS listings in South Florida. Use this when a user asks about properties, homes for sale, or wants to see listings matching specific criteria like location, price range, bedrooms, bathrooms, or property type. You can search by city, zip code, or neighborhood.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        city: {
-          type: 'string',
-          description: 'City name (e.g., Miami, Coral Gables, Doral, Miami Beach, Fort Lauderdale, Hialeah, Homestead). For neighborhoods within Miami like Wynwood, Little Haiti, Brickell, Design District, Brownsville — use the neighborhood field instead and set city to Miami.'
-        },
-        postal_code: {
-          type: 'string',
-          description: 'ZIP code (e.g., 33178, 33130, 33137). Use this when the user provides a zip code.'
-        },
-        neighborhood: {
-          type: 'string',
-          description: 'Neighborhood or area name for searching within a city (e.g., Wynwood, Brickell, Little Haiti, Design District, Brownsville, Edgewater, Midtown, Coconut Grove, Little Havana, Allapattah, Overtown, Liberty City, Kendall, Doral). This searches the address and MLS area fields.'
-        },
-        min_price: {
-          type: 'number',
-          description: 'Minimum listing price in dollars'
-        },
-        max_price: {
-          type: 'number',
-          description: 'Maximum listing price in dollars'
-        },
-        bedrooms_min: {
-          type: 'integer',
-          description: 'Minimum number of bedrooms'
-        },
-        bedrooms_max: {
-          type: 'integer',
-          description: 'Maximum number of bedrooms (use when user asks for exact bedroom count, e.g., 2/2 means min=2 max=2)'
-        },
-        bathrooms_min: {
-          type: 'integer',
-          description: 'Minimum number of bathrooms'
-        },
-        property_type: {
-          type: 'string',
-          enum: ['Residential', 'Condominium', 'Townhouse', 'Commercial', 'Land'],
-          description: 'Type of property. Single family homes = Residential. Condos/apartments = Condominium.'
-        },
-        property_sub_type: {
-          type: 'string',
-          description: 'More specific property type (e.g., Single Family Residence, Townhouse, Villa, Duplex)'
-        },
-        max_results: {
-          type: 'integer',
-          description: 'Max number of listings to return (default 5, max 10)'
-        }
-      },
-      required: []
-    }
-  }
-];
-
-// ── Bridge API search function ──
-async function searchListings(params) {
+// ─── STRIPE CHECKOUT ENDPOINT ─────────────────────────────────────────────────
+app.post('/create-checkout', async (req, res) => {
   try {
-    const filters = [];
-    filters.push("StandardStatus eq 'Active'");
+    const { items, annual } = req.body;
+    // items = ['res', 'sat', 'guide'] etc.
 
-    if (params.postal_code) {
-      filters.push(`PostalCode eq '${params.postal_code}'`);
-    }
-    if (params.city) {
-      filters.push(`City eq '${params.city}'`);
-    }
-    if (params.min_price) {
-      filters.push(`ListPrice ge ${params.min_price}`);
-    }
-    if (params.max_price) {
-      filters.push(`ListPrice le ${params.max_price}`);
-    }
-    if (params.bedrooms_min) {
-      filters.push(`BedroomsTotal ge ${params.bedrooms_min}`);
-    }
-    if (params.bedrooms_max) {
-      filters.push(`BedroomsTotal le ${params.bedrooms_max}`);
-    }
-    if (params.bathrooms_min) {
-      filters.push(`BathroomsTotalInteger ge ${params.bathrooms_min}`);
-    }
-    if (params.property_type) {
-      filters.push(`PropertyType eq '${params.property_type}'`);
-    }
-    if (params.property_sub_type) {
-      filters.push(`PropertySubType eq '${params.property_sub_type}'`);
-    }
-    if (params.neighborhood) {
-      // Search neighborhood in address and MLS area fields
-      filters.push(`(contains(UnparsedAddress,'${params.neighborhood}') or contains(MLSAreaMajor,'${params.neighborhood}'))`);
+    if (!items || !items.length) {
+      return res.status(400).json({ error: 'No items provided' });
     }
 
-    const maxResults = Math.min(params.max_results || 5, 10);
-
-    const queryParams = new URLSearchParams({
-      'access_token': BRIDGE_TOKEN,
-      '$filter': filters.join(' and '),
-      '$orderby': 'ListPrice desc',
-      '$top': maxResults.toString(),
-      '$select': 'ListingId,ListingKey,ListPrice,City,StateOrProvince,PostalCode,UnparsedAddress,BedroomsTotal,BathroomsTotalInteger,LivingArea,PropertyType,PropertySubType,MLSAreaMajor,ListOfficeName,ListAgentFullName,ListAgentMlsId,PublicRemarks'
+    const lineItems = items.map(function(id) {
+      const billing = annual ? 'a' : 'm';
+      const priceId = PRICE_IDS[id] && PRICE_IDS[id][billing];
+      if (!priceId) throw new Error('Unknown product: ' + id);
+      return { price: priceId, quantity: 1 };
     });
 
-    const url = `${BRIDGE_BASE}?${queryParams.toString()}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    // Separate subscriptions from one-time payments
+    const subItems  = lineItems.filter((_, i) => !ONE_TIME.has(items[i]));
+    const otItems   = lineItems.filter((_, i) =>  ONE_TIME.has(items[i]));
 
-    if (!data.value || data.value.length === 0) {
-      return { results: [], message: 'No active listings found matching that criteria.' };
+    // If mixed, we create two sessions and return both URLs
+    // If all same type, we create one session
+    const sessions = [];
+
+    if (subItems.length > 0) {
+      const subSession = await stripe.checkout.sessions.create({
+        mode: 'subscription',
+        line_items: subItems,
+        success_url: 'https://cosmicleads.net/pages/portal.html?checkout=success',
+        cancel_url:  'https://cosmicleads.net/pages/pricing.html',
+        allow_promotion_codes: true,
+      });
+      sessions.push(subSession.url);
     }
 
-    const listings = data.value.map(listing => {
-      const isOurListing = TEAM_MLS_IDS.includes(listing.ListAgentMlsId);
+    if (otItems.length > 0) {
+      const otSession = await stripe.checkout.sessions.create({
+        mode: 'payment',
+        line_items: otItems,
+        success_url: 'https://cosmicleads.net/pages/pricing.html?purchase=success',
+        cancel_url:  'https://cosmicleads.net/pages/pricing.html',
+        allow_promotion_codes: true,
+      });
+      sessions.push(otSession.url);
+    }
 
-      return {
-        listing_id: listing.ListingId,
-        address: listing.UnparsedAddress || 'Address available upon request',
-        city: listing.City,
-        state: listing.StateOrProvince,
-        zip: listing.PostalCode,
-        neighborhood: listing.MLSAreaMajor || null,
-        price: listing.ListPrice,
-        bedrooms: listing.BedroomsTotal,
-        bathrooms: listing.BathroomsTotalInteger,
-        sqft: listing.LivingArea,
-        property_type: listing.PropertyType,
-        property_sub_type: listing.PropertySubType || null,
-        listing_office: listing.ListOfficeName,
-        listing_agent: listing.ListAgentFullName,
-        is_our_listing: isOurListing,
-        detail_url: `https://themethodre.com/listing-detail.html?id=${listing.ListingId}`
-      };
-    });
+    res.json({ urls: sessions });
 
-    return { results: listings, count: listings.length };
   } catch (err) {
-    console.error('Bridge API error:', err);
-    return { results: [], message: 'Unable to search listings right now. Please call (305) 916-1194 for immediate help.' };
+    console.error('[Stripe Checkout]', err.message);
+    res.status(500).json({ error: err.message });
   }
-}
+});
 
-// ── Chat endpoint ──
+// ─── METHOD AI CHAT ENDPOINT ──────────────────────────────────────────────────
+const SYSTEM_PROMPT = `You are the AI operator for The Method Real Estate Group.
+
+Your job is to quickly understand what the visitor wants and guide them to the correct next step.
+
+The four main visitor types are:
+1. Buyer
+2. Seller
+3. Agent who wants to join
+4. Agent who wants to learn how The Method generates listings
+
+You speak in a direct, confident, natural, professional tone.
+You do not sound generic or robotic.
+You do not write long paragraphs unless needed.
+You move conversations forward.
+
+Your priorities:
+- Identify the visitor's intent fast
+- Answer clearly
+- Guide them to the best next action
+
+Routing logic:
+- If the visitor wants to buy, guide them to listings or consultation
+- If the visitor wants to sell, position Ander and The Method as the right people to speak with and offer consultation
+- If the visitor wants to join the team, guide them to the join page
+- If the visitor wants to learn how listings are generated, guide them to Learn The Method
+
+Always recommend the next step clearly.
+Do not ramble.
+Do not invent information.
+If you are missing a detail, guide the user toward contact or consultation.
+
+When you want to send the user to a page, end your message naturally and include a JSON action block on its own line like this:
+ACTION:{"type":"navigate","url":"/buy.html"}
+
+Available actions:
+- Buy page:          ACTION:{"type":"navigate","url":"/buy.html"}
+- Sell page:         ACTION:{"type":"navigate","url":"/sell.html"}
+- Listings page:     ACTION:{"type":"navigate","url":"/listings.html"}
+- Join page:         ACTION:{"type":"navigate","url":"/join.html"}
+- Contact page:      ACTION:{"type":"navigate","url":"/contact.html"}
+- Book consultation: ACTION:{"type":"open","url":"https://calendly.com/anderegurrola001/30min"}
+
+Only include an ACTION when it makes sense to send the user somewhere.`;
+
 app.post('/chat', async (req, res) => {
   try {
     const { messages } = req.body;
     if (!messages || !Array.isArray(messages)) {
-      return res.status(400).json({ error: 'Invalid messages' });
+      return res.status(400).json({ error: 'Invalid request' });
     }
 
-    // Initial Claude call
-    let response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 600,
-      system: SYSTEM_PROMPT,
-      tools: TOOLS,
-      messages: messages.map(m => ({
-        role: m.role,
-        content: m.content
-      }))
+    const response = await client.messages.create({
+      model:      'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system:     SYSTEM_PROMPT,
+      messages:   messages,
     });
 
-    // Handle tool use loop (Claude may call search_listings)
-    while (response.stop_reason === 'tool_use') {
-      const toolBlock = response.content.find(b => b.type === 'tool_use');
-      if (!toolBlock) break;
+    const raw = response.content[0]?.text || '';
+    const actionMatch = raw.match(/ACTION:(\{.*?\})/);
+    let action  = null;
+    let message = raw.replace(/ACTION:\{.*?\}/, '').trim();
 
-      let toolResult;
-      if (toolBlock.name === 'search_listings') {
-        toolResult = await searchListings(toolBlock.input);
-      } else {
-        toolResult = { error: 'Unknown tool' };
-      }
-
-      // Send tool result back to Claude
-      response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
-        system: SYSTEM_PROMPT,
-        tools: TOOLS,
-        messages: [
-          ...messages.map(m => ({ role: m.role, content: m.content })),
-          { role: 'assistant', content: response.content },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'tool_result',
-                tool_use_id: toolBlock.id,
-                content: JSON.stringify(toolResult)
-              }
-            ]
-          }
-        ]
-      });
+    if (actionMatch) {
+      try { action = JSON.parse(actionMatch[1]); } catch (_) {}
     }
 
-    // Extract text response
-    const textBlock = response.content.find(b => b.type === 'text');
-    const reply = textBlock ? textBlock.text : 'Something went wrong. Please call (305) 916-1194.';
-
-    res.json({ reply });
+    res.json({ message, action });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Server error', reply: 'Something went wrong. Please call (305) 916-1194.' });
+    console.error('[Method AI]', err.message);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+// Health check
+app.get('/', (req, res) => res.send('Method AI + CosmicLeads server is running.'));
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`The Method AI server running on port ${PORT}`));
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
