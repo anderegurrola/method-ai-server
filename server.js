@@ -31,11 +31,11 @@ app.use(express.json());
 const PRICE_IDS = {
   res:      { m: 'price_1TKmecAqwGTR1f7OFdCNKE0D', a: 'price_1TKmlAAqwGTR1f708X8Xwva4' },
   com:      { m: 'price_1TKmmYAqwGTR1f7OtFGsai1C', a: 'price_1TKmn3AqwGTR1f70HhWsL8QL' },
-  rent:     { m: 'price_1TKmo4AqwGTR1f700wY6dXFz', a: 'price_1TKmofAqwGTR1f70giCtOnhI' },
-  bundle:   { m: 'price_1TKmqEAqwGTR1f70TkCEBsOm', a: 'price_1TKmqfAqwGTR1f70krzY0Eeo' },
-  sat:      { m: 'price_1TKmrSAqwGTR1f70hnYJgM7j', a: 'price_1TKmsAAqwGTR1f70IPS3JnW4' },
-  guide:    { m: 'price_1TKmvDAqwGTR1f70QhgwEzoF', a: 'price_1TKmvDAqwGTR1f70QhgwEzoF' },
-  coaching: { m: 'price_1TKmxgAqwGTR1f705i16Tqyd', a: 'price_1TKmxgAqwGTR1f705i16Tqyd' }
+  rent:     { m: 'price_1TMxISAqwGTR1f7OXh04So9Y', a: 'price_1TMxIrAqwGTR1f706SlJb1Re' },
+  bundle:   { m: 'price_1TMxM9AqwGTR1f7OZMsSK8x4', a: 'price_1TMxMPAqwGTR1f7OnqaHoPpb' },
+  sat:      { m: 'price_1TMxN1AqwGTR1f7OohnvQwIq', a: 'price_1TMxNFAqwGTR1f7Oj2bq7qx3' },
+  guide:    { m: 'price_1TMxNrAqwGTR1f7O6N22eJig', a: 'price_1TMxNrAqwGTR1f7O6N22eJig' },
+  coaching: { m: 'price_1TMxOMAqwGTR1f7OwpwE9QtK', a: 'price_1TMxOMAqwGTR1f7OwpwE9QtK' }
 };
 
 // One-time products (not subscriptions)
@@ -173,6 +173,9 @@ app.post('/chat', async (req, res) => {
 
 // Health check
 app.get('/', (req, res) => res.send('Method AI + CosmicLeads server is running.'));
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
