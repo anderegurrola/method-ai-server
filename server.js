@@ -12,6 +12,24 @@ const app    = express();
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+// ─── WEBHOOK + AUTOMATION CONFIG ─────────────────────────────────────────────
+const WEBHOOK_SECRET   = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_yp6jPspHBJANBITZIuQ2QqlHct1au7AM';
+const SUPABASE_URL     = 'https://kirafcubhtytxbnfzmgr.supabase.co';
+const SUPABASE_KEY     = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpcmFmY3ViaHR5dHhibmZ6bWdyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjM0ODY2OCwiZXhwIjoyMDkxOTI0NjY4fQ.8rX-W-bM6DMIzceusZGcpN8_bSt2aMXXs7fSHXJzP9E';
+const RESEND_KEY       = process.env.RESEND_API_KEY || 're_6QGyQjDn_LoDkA2bmtNeak4oKgAwzGmJ9';
+
+// Map Stripe price IDs to CosmicLeads plan names
+const PRICE_TO_PLAN = {
+  'price_1TKmecAqwGTR1f7OFdCNKE0D': 'residential',
+  'price_1TKmlAAqwGTR1f708X8Xwva4': 'residential',
+  'price_1TKmmYAqwGTR1f7OtFGsai1C': 'commercial',
+  'price_1TKmn3AqwGTR1f70HhWsL8QL': 'commercial',
+  'price_1TMxISAqwGTR1f7OXh04So9Y': 'rentals',
+  'price_1TMxIrAqwGTR1f706SlJb1Re': 'rentals',
+  'price_1TMxM9AqwGTR1f7OZMsSK8x4': 'bundle',
+  'price_1TMxMPAqwGTR1f7OnqaHoPpb': 'bundle',
+};
+
 // ─── CORS ────────────────────────────────────────────────────────────────────
 // Allow both sites to call this server
 app.use(cors({
@@ -24,6 +42,8 @@ app.use(cors({
     'http://127.0.0.1:5500'
   ]
 }));
+// Raw body needed for Stripe webhook signature verification
+app.use('/webhook', require('express').raw({ type: 'application/json' }));
 app.use(express.json());
 
 // ─── PRICE ID MAP ─────────────────────────────────────────────────────────────
@@ -169,6 +189,103 @@ app.post('/chat', async (req, res) => {
     console.error('[Method AI]', err.message);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+
+// ─── STRIPE WEBHOOK ───────────────────────────────────────────────────────────
+app.post('/webhook', async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.body, sig, WEBHOOK_SECRET);
+  } catch (err) {
+    console.error('[Webhook] Signature verification failed:', err.message);
+    return res.status(400).send('Webhook Error: ' + err.message);
+  }
+
+  console.log('[Webhook] Event:', event.type);
+
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const email = session.customer_details?.email || session.customer_email;
+      const customerId = session.customer;
+
+      if (!email) {
+        console.error('[Webhook] No email in session');
+        return res.json({ received: true });
+      }
+
+      // Get subscription to determine plan
+      let plan = 'residential';
+      if (session.subscription) {
+        const sub = await stripe.subscriptions.retrieve(session.subscription);
+        const priceId = sub.items.data[0]?.price?.id;
+        plan = PRICE_TO_PLAN[priceId] || 'residential';
+      }
+
+      // Create Supabase user via invite
+      const inviteRes = await fetch(SUPABASE_URL + '/auth/v1/invite', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_KEY,
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const inviteData = await inviteRes.json();
+      const userId = inviteData.id;
+
+      if (userId) {
+        // Add to subscribers table
+        await fetch(SUPABASE_URL + '/rest/v1/subscribers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_KEY,
+            'Prefer': 'resolution=merge-duplicates'
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            email: email,
+            plan: plan,
+            status: 'active',
+            stripe_customer_id: customerId,
+            stripe_subscription_id: session.subscription || null,
+          })
+        });
+        console.log('[Webhook] Created subscriber:', email, plan);
+      } else {
+        console.error('[Webhook] Failed to create user:', JSON.stringify(inviteData));
+      }
+    }
+
+    if (event.type === 'customer.subscription.deleted' || event.type === 'invoice.payment_failed') {
+      const obj = event.data.object;
+      const customerId = obj.customer;
+
+      // Find subscriber by stripe_customer_id and deactivate
+      await fetch(SUPABASE_URL + '/rest/v1/subscribers?stripe_customer_id=eq.' + customerId, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_KEY,
+        },
+        body: JSON.stringify({ status: 'inactive' })
+      });
+      console.log('[Webhook] Deactivated subscriber for customer:', customerId);
+    }
+
+  } catch (err) {
+    console.error('[Webhook] Processing error:', err.message);
+  }
+
+  res.json({ received: true });
 });
 
 // Health check
