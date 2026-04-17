@@ -13,10 +13,10 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ─── WEBHOOK + AUTOMATION CONFIG ─────────────────────────────────────────────
-const WEBHOOK_SECRET   = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_yp6jPspHBJANBITZIuQ2QqlHct1au7AM';
+const WEBHOOK_SECRET   = process.env.STRIPE_WEBHOOK_SECRET;
 const SUPABASE_URL     = 'https://kirafcubhtytxbnfzmgr.supabase.co';
-const SUPABASE_KEY     = process.env.SUPABASE_SERVICE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpcmFmY3ViaHR5dHhibmZ6bWdyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjM0ODY2OCwiZXhwIjoyMDkxOTI0NjY4fQ.8rX-W-bM6DMIzceusZGcpN8_bSt2aMXXs7fSHXJzP9E';
-const RESEND_KEY       = process.env.RESEND_API_KEY || 're_6QGyQjDn_LoDkA2bmtNeak4oKgAwzGmJ9';
+const SUPABASE_KEY     = process.env.SUPABASE_SERVICE_KEY;
+const RESEND_KEY       = process.env.RESEND_API_KEY;
 
 // Map Stripe price IDs to CosmicLeads plan names
 const PRICE_TO_PLAN = {
