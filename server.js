@@ -30,6 +30,25 @@ const PRICE_TO_PLAN = {
   'price_1TMxMPAqwGTR1f7OnqaHoPpb': 'bundle',
 };
 
+// Saturday add-on price IDs
+const SAT_PRICE_IDS = new Set([
+  'price_1TMxN1AqwGTR1f7OohnvQwIq',
+  'price_1TMxNFAqwGTR1f7Oj2bq7qx3',
+]);
+
+// Guide price IDs
+const GUIDE_PRICE_IDS = new Set([
+  'price_1TMxNrAqwGTR1f7O6N22eJig',
+]);
+
+// Coaching price IDs
+const COACHING_PRICE_IDS = new Set([
+  'price_1TMxOMAqwGTR1f7OwpwE9QtK',
+]);
+
+// Script download access code
+const SCRIPT_ACCESS_CODE = 'SCRIPT001';
+
 // ─── CORS ────────────────────────────────────────────────────────────────────
 // Allow both sites to call this server
 app.use(cors({
@@ -217,50 +236,120 @@ app.post('/webhook', async (req, res) => {
         return res.json({ received: true });
       }
 
-      // Get subscription to determine plan
-      let plan = 'residential';
+      // ── Subscription purchase ─────────────────────────────────────────────
       if (session.subscription) {
         const sub = await stripe.subscriptions.retrieve(session.subscription);
-        const priceId = sub.items.data[0]?.price?.id;
-        plan = PRICE_TO_PLAN[priceId] || 'residential';
-      }
+        const allPriceIds = sub.items.data.map(i => i.price.id);
 
-      // Create Supabase user via invite
-      const inviteRes = await fetch(SUPABASE_URL + '/auth/v1/invite', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPABASE_KEY,
-          'Authorization': 'Bearer ' + SUPABASE_KEY,
-        },
-        body: JSON.stringify({ email })
-      });
+        // Determine plan from first recognized subscription price
+        let plan = 'residential';
+        for (const pid of allPriceIds) {
+          if (PRICE_TO_PLAN[pid]) { plan = PRICE_TO_PLAN[pid]; break; }
+        }
 
-      const inviteData = await inviteRes.json();
-      const userId = inviteData.id;
+        // Detect Saturday add-on
+        const hasSaturday = allPriceIds.some(pid => SAT_PRICE_IDS.has(pid));
 
-      if (userId) {
-        // Add to subscribers table
-        await fetch(SUPABASE_URL + '/rest/v1/subscribers', {
+        // Create Supabase user via invite
+        const inviteRes = await fetch(SUPABASE_URL + '/auth/v1/invite', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'apikey': SUPABASE_KEY,
             'Authorization': 'Bearer ' + SUPABASE_KEY,
-            'Prefer': 'resolution=merge-duplicates'
           },
-          body: JSON.stringify({
-            user_id: userId,
-            email: email,
-            plan: plan,
-            status: 'active',
-            stripe_customer_id: customerId,
-            stripe_subscription_id: session.subscription || null,
-          })
+          body: JSON.stringify({ email })
         });
-        console.log('[Webhook] Created subscriber:', email, plan);
-      } else {
-        console.error('[Webhook] Failed to create user:', JSON.stringify(inviteData));
+
+        const inviteData = await inviteRes.json();
+        const userId = inviteData.id;
+
+        if (userId) {
+          await fetch(SUPABASE_URL + '/rest/v1/subscribers', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': SUPABASE_KEY,
+              'Authorization': 'Bearer ' + SUPABASE_KEY,
+              'Prefer': 'resolution=merge-duplicates'
+            },
+            body: JSON.stringify({
+              user_id: userId,
+              email: email,
+              plan: plan,
+              status: 'active',
+              saturday: hasSaturday,
+              stripe_customer_id: customerId,
+              stripe_subscription_id: session.subscription || null,
+            })
+          });
+          console.log('[Webhook] Created subscriber:', email, plan, hasSaturday ? '+ saturday' : '');
+        } else {
+          console.error('[Webhook] Failed to create user:', JSON.stringify(inviteData));
+        }
+      }
+
+      // ── One-time purchase: Guide (cold calling script) ─────────────────────
+      if (session.mode === 'payment') {
+        const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
+        const purchasedPriceIds = lineItems.data.map(i => i.price.id);
+
+        const boughtGuide    = purchasedPriceIds.some(pid => GUIDE_PRICE_IDS.has(pid));
+        const boughtCoaching = purchasedPriceIds.some(pid => COACHING_PRICE_IDS.has(pid));
+
+        if (boughtGuide) {
+          const downloadUrl = 'https://cosmicleads.net/pages/script-download.html?code=' + SCRIPT_ACCESS_CODE;
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + RESEND_KEY,
+            },
+            body: JSON.stringify({
+              from: 'CosmicLeads <info@cosmicleads.net>',
+              to: email,
+              subject: 'Your Method Script System is ready ✦',
+              html: `
+<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#070B16;color:#F1F5F9;padding:40px;border-radius:12px;">
+  <div style="font-size:22px;font-weight:700;color:#6366F1;margin-bottom:24px;">✦ CosmicLeads</div>
+  <h2 style="font-size:22px;font-weight:700;margin-bottom:12px;">The Method Script System</h2>
+  <p style="color:#94A3B8;font-size:14px;line-height:1.6;margin-bottom:28px;">Your purchase is confirmed. Both the English and Spanish versions are ready to download.</p>
+  <a href="${downloadUrl}" style="display:inline-block;background:#6366F1;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;margin-bottom:28px;">Download Your Scripts →</a>
+  <p style="color:#334155;font-size:12px;margin-top:8px;">If the button doesn't work, copy this link: ${downloadUrl}</p>
+  <hr style="border:none;border-top:1px solid rgba(99,102,241,0.15);margin:28px 0;" />
+  <p style="color:#475569;font-size:12px;">Questions? Reply to this email or text 305-916-1244.</p>
+</div>`
+            })
+          });
+          console.log('[Webhook] Sent guide download email to:', email);
+        }
+
+        if (boughtCoaching) {
+          const calendlyUrl = 'https://calendly.com/anderegurrola001/1-on-1-coaching-with-the-method';
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + RESEND_KEY,
+            },
+            body: JSON.stringify({
+              from: 'CosmicLeads <info@cosmicleads.net>',
+              to: email,
+              subject: 'Book your coaching session with Ander ✦',
+              html: `
+<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#070B16;color:#F1F5F9;padding:40px;border-radius:12px;">
+  <div style="font-size:22px;font-weight:700;color:#6366F1;margin-bottom:24px;">✦ CosmicLeads</div>
+  <h2 style="font-size:22px;font-weight:700;margin-bottom:12px;">1-on-1 Coaching with The Method</h2>
+  <p style="color:#94A3B8;font-size:14px;line-height:1.6;margin-bottom:28px;">Your payment is confirmed. Book your session directly on Ander's calendar — pick a time that works for you.</p>
+  <a href="${calendlyUrl}" style="display:inline-block;background:#6366F1;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;margin-bottom:28px;">Book Your Session →</a>
+  <p style="color:#334155;font-size:12px;margin-top:8px;">If the button doesn't work, copy this link: ${calendlyUrl}</p>
+  <hr style="border:none;border-top:1px solid rgba(99,102,241,0.15);margin:28px 0;" />
+  <p style="color:#475569;font-size:12px;">Questions? Reply to this email or text 305-916-1244.</p>
+</div>`
+            })
+          });
+          console.log('[Webhook] Sent coaching booking email to:', email);
+        }
       }
     }
 
