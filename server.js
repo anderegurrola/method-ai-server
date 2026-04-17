@@ -288,6 +288,92 @@ app.post('/webhook', async (req, res) => {
   res.json({ received: true });
 });
 
+
+// ─── DAILY LEADS EMAIL ENDPOINT ──────────────────────────────────────────────
+app.post('/send-daily-leads', async (req, res) => {
+  // Simple security check
+  const authHeader = req.headers['authorization'];
+  if (authHeader !== 'Bearer ' + process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    // 1. Get all active subscribers
+    const subRes = await fetch(SUPABASE_URL + '/rest/v1/subscribers?status=eq.active&select=email,plan', {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+      }
+    });
+    const subscribers = await subRes.json();
+
+    if (!subscribers || !subscribers.length) {
+      return res.json({ sent: 0, message: 'No active subscribers' });
+    }
+
+    // 2. Generate motivational message with Claude
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    const aiResponse = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 300,
+      messages: [{
+        role: 'user',
+        content: `Write a short, fired-up motivational message for real estate agents who prospect expired listings for a living. Today is ${today}. 
+
+Rules:
+- 2-3 sentences max
+- Raw, direct, no fluff
+- Think locker room speech meets street hustle
+- Never use clichés like "rise and grind" or "crush it"
+- Make it feel urgent and real — these agents are calling homeowners whose listings just expired
+- Different energy every day
+- No hashtags, no emojis
+
+Just write the message, nothing else.`
+      }]
+    });
+
+    const motivationalMsg = aiResponse.content[0]?.text?.trim() || "Your leads are live. Get to work.";
+
+    // 3. Send email to each subscriber
+    let sent = 0;
+    for (const sub of subscribers) {
+      const planLabel = sub.plan === 'bundle' ? 'Residential, Commercial & Rental' : 
+                        sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1);
+
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + RESEND_KEY,
+        },
+        body: JSON.stringify({
+          from: 'CosmicLeads <info@cosmicleads.net>',
+          to: sub.email,
+          subject: `Your ${today} leads are live ✦`,
+          html: \`
+<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#070B16;color:#F1F5F9;padding:40px;border-radius:12px;">
+  <div style="font-size:22px;font-weight:700;color:#6366F1;margin-bottom:24px;">✦ CosmicLeads</div>
+  <p style="font-size:18px;font-weight:600;line-height:1.5;margin-bottom:24px;color:#F1F5F9;">\${motivationalMsg}</p>
+  <p style="color:#64748B;font-size:13px;margin-bottom:32px;font-family:monospace;">// \${planLabel} expired leads · \${today}</p>
+  <a href="https://cosmicleads.net/pages/dashboard.html" style="display:inline-block;background:#6366F1;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">View Today's Leads →</a>
+  <p style="color:#334155;font-size:12px;margin-top:32px;">CosmicLeads · cosmicleads.net</p>
+</div>
+          \`
+        })
+      });
+      sent++;
+    }
+
+    console.log('[Daily Email] Sent to', sent, 'subscribers');
+    res.json({ sent, message: motivationalMsg });
+
+  } catch (err) {
+    console.error('[Daily Email] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Health check
 app.get('/', (req, res) => res.send('Method AI + CosmicLeads server is running.'));
 
