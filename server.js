@@ -351,15 +351,15 @@ Just write the message, nothing else.`
           from: 'CosmicLeads <info@cosmicleads.net>',
           to: sub.email,
           subject: `Your ${today} leads are live ✦`,
-          html: \`
+          html: `
 <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#070B16;color:#F1F5F9;padding:40px;border-radius:12px;">
   <div style="font-size:22px;font-weight:700;color:#6366F1;margin-bottom:24px;">✦ CosmicLeads</div>
-  <p style="font-size:18px;font-weight:600;line-height:1.5;margin-bottom:24px;color:#F1F5F9;">\${motivationalMsg}</p>
-  <p style="color:#64748B;font-size:13px;margin-bottom:32px;font-family:monospace;">// \${planLabel} expired leads · \${today}</p>
+  <p style="font-size:18px;font-weight:600;line-height:1.5;margin-bottom:24px;color:#F1F5F9;">${motivationalMsg}</p>
+  <p style="color:#64748B;font-size:13px;margin-bottom:32px;font-family:monospace;">// ${planLabel} expired leads · ${today}</p>
   <a href="https://cosmicleads.net/pages/dashboard.html" style="display:inline-block;background:#6366F1;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-size:15px;font-weight:600;">View Today's Leads →</a>
   <p style="color:#334155;font-size:12px;margin-top:32px;">CosmicLeads · cosmicleads.net</p>
 </div>
-          \`
+          `
         })
       });
       sent++;
