@@ -13,7 +13,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // ─── WEBHOOK + AUTOMATION CONFIG ─────────────────────────────────────────────
-const WEBHOOK_SECRET   = process.env.STRIPE_WEBHOOK_SECRET;
+const WEBHOOK_SECRET   = process.env.WEBHOOK_SECRET;
 const SUPABASE_URL     = 'https://kirafcubhtytxbnfzmgr.supabase.co';
 const SUPABASE_KEY     = process.env.SUPABASE_SERVICE_KEY;
 const RESEND_KEY       = process.env.RESEND_API_KEY;
