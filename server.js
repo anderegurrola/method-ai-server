@@ -189,7 +189,7 @@ app.post('/chat', async (req, res) => {
       try { action = JSON.parse(actionMatch[1]); } catch (_) {}
     }
 
-    res.json({ message, action });
+    res.json({ reply: message, action });
   } catch (err) {
     console.error('[Method AI]', err.message);
     res.status(500).json({ error: 'Server error' });
