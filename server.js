@@ -160,9 +160,19 @@ Available actions:
 - Buy page:          ACTION:{"type":"navigate","url":"/buy.html"}
 - Sell page:         ACTION:{"type":"navigate","url":"/sell.html"}
 - Listings page:     ACTION:{"type":"navigate","url":"/listings.html"}
+- Listings filtered by city: ACTION:{"type":"navigate","url":"/listings.html?city=Doral"}
+- Listings filtered by ZIP:  ACTION:{"type":"navigate","url":"/listings.html?zip=33156"}
+- Listings filtered by type: ACTION:{"type":"navigate","url":"/listings.html?type=Condominium"}
+- Listings with price/beds:  ACTION:{"type":"navigate","url":"/listings.html?city=Brickell&minPrice=500000&beds=2"}
 - Join page:         ACTION:{"type":"navigate","url":"/join.html"}
 - Contact page:      ACTION:{"type":"navigate","url":"/contact.html"}
 - Book consultation: ACTION:{"type":"open","url":"https://calendly.com/anderegurrola001/30min"}
+
+City/ZIP/filter query params on /listings.html pre-fill the search and auto-run it.
+Use this when the user asks for properties in a specific area or with specific criteria.
+
+URL param keys you can combine: city, zip, minPrice, maxPrice, beds, baths, type, minSqft.
+Property type values: Residential, Condominium, Residential Income, Land, Commercial Sale, Residential Lease, Commercial Lease.
 
 Only include an ACTION when it makes sense to send the user somewhere.`;
 
