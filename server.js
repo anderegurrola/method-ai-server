@@ -173,11 +173,22 @@ app.post('/chat', async (req, res) => {
       return res.status(400).json({ error: 'Invalid request' });
     }
 
+    // Anthropic API requires messages[] to start with role 'user'.
+    // The widget pushes its greeting as the first 'assistant' message into history,
+    // so strip leading assistant messages before sending to Anthropic.
+    let cleanMessages = messages.slice();
+    while (cleanMessages.length && cleanMessages[0].role !== 'user') {
+      cleanMessages.shift();
+    }
+    if (cleanMessages.length === 0) {
+      return res.json({ reply: 'How can I help?', action: null });
+    }
+
     const response = await client.messages.create({
       model:      'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system:     SYSTEM_PROMPT,
-      messages:   messages,
+      messages:   cleanMessages,
     });
 
     const raw = response.content[0]?.text || '';
@@ -191,8 +202,8 @@ app.post('/chat', async (req, res) => {
 
     res.json({ reply: message, action });
   } catch (err) {
-    console.error('[Method AI]', err.message);
-    res.status(500).json({ error: 'Server error' });
+    console.error('[Method AI]', err.message, err.stack);
+    res.status(500).json({ error: 'Server error', detail: err.message });
   }
 });
 
